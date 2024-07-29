@@ -4,7 +4,9 @@ from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
 from pprint import pprint
 
-from airflow.operators.python import PythonOperator
+from airflow.operators.python import (
+        PythonOperator, 
+        PythonVirtualenvOperator)
 
 with DAG(
     'movie',
@@ -47,30 +49,33 @@ with DAG(
         return "Whatever you return gets printed in the logs"
 
     run_this = PythonOperator(
-            task_id="print_the_context", 
-            python_callable=print_context)
+            task_id="print_the_context",
+            python_callable=print_context,
+            )
 
-    task_start = EmptyOperator(
+    start= EmptyOperator(
             task_id ='start',
             )
 
-    task_get_data= PythonOperator(
+    get_data= PythonVirtualenvOperator(
             task_id ='get_data',
             python_callable=get_data
+            requirements=["git+https://github.com/HaramSs/movie.git@0.2/api"],
+        system_site_packages=False,
             )
 
-    task_save_data= BashOperator(
+    save_data= BashOperator(
             task_id ='save_data',
             bash_command="""
             echo "save_data"
             """
             )
 
-    task_end = EmptyOperator(
+    end = EmptyOperator(
             task_id ='end',
             trigger_rule="all_done"
             )
 
 
-    task_start >> task_get_data >> task_save_data >> task_end
-    task_start >> run_this >> task_end
+   start >> get_data >> save_data >> end
+    start >> run_this >> end
