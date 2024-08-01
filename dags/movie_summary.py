@@ -10,12 +10,11 @@ from airflow.operators.python import (
         PythonVirtualenvOperator)
 
 with DAG(
-    'movie',
+    'movie_summary',
     default_args={
         'depends_on_past': False,
         'retries': 1,
         'retry_delay': timedelta(seconds=3)
-    
     },
     max_active_tasks=3,
     max_active_runs=1,
@@ -164,11 +163,9 @@ with DAG(
         get_end = EmptyOperator(task_id='get.end')
 
         start >> branch_op 
-        start >> throw_err >> get_start
+        start >> throw_err >> save_data 
 
         branch_op >> [rm_dir, echo_task] >> get_start
-        # branch_op >> echo_task >> get_start
         branch_op >> get_start
         get_start >> [get_data, multi_y, multi_n, nation_k, nation_f] >> get_end
         get_end >> save_data >> end
-        
