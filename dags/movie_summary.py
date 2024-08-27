@@ -1,171 +1,99 @@
-from airflow import DAG
 from datetime import datetime, timedelta
+
+from airflow import DAG
+
 from airflow.operators.bash import BashOperator
 from airflow.operators.empty import EmptyOperator
-from pprint import pprint
 
 from airflow.operators.python import (
-        PythonOperator, 
         BranchPythonOperator, 
-        PythonVirtualenvOperator)
+        PythonVirtualenvOperator,
+        PythonOperator,
+)
 
 with DAG(
     'movie_summary',
     default_args={
         'depends_on_past': False,
         'retries': 1,
-        'retry_delay': timedelta(seconds=3)
+        'retry_delay': timedelta(seconds=3),
     },
-    max_active_tasks=3,
     max_active_runs=1,
-    description='movie DAG',
-    #schedule_interval=timedelta(days=1),
-    schedule="10 4 * * *",
+    max_active_tasks=3,
+    description=' movie summary',
+    schedule="30 2 * * *",
     start_date=datetime(2024, 7, 24),
     catchup=True,
-    tags=['api', 'movie', 'amt'],
+    tags=['api', 'movie', 'amt', 'agg', 'summary'],
 ) as dag:
-        def get_data(ds_nodash):
-                from movie.api.call import get_key,save2df
-                df=save2df(ds_nodash)
-                print(df.head(5))
+    REQUIREMENTS = [
+                "git+https://github.com/HaramSs/mov_agg.git@0.5/agg",
+                ]
+    def gen_empty(*ids):
+        tasks = []
+        for id in ids:
+            task = EmptyOperator(task_id=id)
+            tasks.append(task)
+        return tuple(tasks) # (t, )
 
-        def save_data(ds_nodash):
-                from movie.api.call import get_key
-                key = get_key()
-                print( "*" * 33)
-                print(key)
-                print( "*" * 33)
-
-
-        # def print_context(ds=None, **kwargs):
-        #         pprint(kwargs)
-        #         print(ds)
-
-        #         #개봉일 기준 그룹핑 누적 관객수 합
-        #         print("개봉일 기준 그룹핑 누적 관객수 합")
-        #         g = df.groupby('openDt')
-        #         sum_df = g.agg({'audiCnt' : 'sum'}).reset_index()
-        #         print(sum_df)
-
-        def branch_fun(ds_nodash):
-                import os
-                home_dir = os.path.expanduser("~")
-                path = os.path.join(home_dir, f"tmp/test_parquet/load_dt={ds_nodash}")
-                if os.path.exists(path):
-                        return "rm_dir"
-                else:
-                        return "get_start", "echo.task"
-   
-        branch_op = BranchPythonOperator(
-                task_id="branch.op", 
-                python_callable=branch_fun
-                
-                )
-
-        get_data= PythonVirtualenvOperator(
-                task_id ='get_data',
-                python_callable=get_data,
-                requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
+    def gen_vpython(**kw):
+        task = PythonVirtualenvOperator(
+                task_id=kw['id'],
+                python_callable=kw['fun_obj'],
                 system_site_packages=False,
-                #venv_cache_path="/home/haram/tmp2/air_venv/get_data"
-                )
+                requirements=REQUIREMENTS,
+                op_kwargs=kw['op_kw']
+            )
+        return task
+    
+    def pro_data(**params):
+        print("@" * 33)
+        print(params['task_name'])
+        print(params) # 여기는 task_name
+        print("@" * 33)
 
-        save_data= PythonVirtualenvOperator(
-                task_id ='save.data',
-                python_callable=save_data,
-                system_site_packages=False,
-                trigger_rule = "one_success",
-                venv_cache_path="/home/haram/tmp2/air_venv/get_data"
-                )
+    def pro_merge(task_name, **params):
+        load_dt = params['ds_nodash']
+        from mov_agg.u import merge
+        df = merge(load_dt)
+        print("*" * 33)
+        print(df)
 
-        def get_data_with_params(**kwargs):
+    def pro_data3(task_name):
+        print("@" * 33)
+        print(task_name)
+        #print(params) # 여기는 task_name 없을 것으로 예상
+        print("@" * 33)
+    
+    def pro_data4(task_name, ds_nodash, **kwargs):
+        print("@" * 33)
+        print(task_name)
+        print(ds_nodash)
+        print(kwargs) # 여기는 task_name 없을 것으로 예상, ds_nodash 도 없 ...
+        print("@" * 33)
+    
+    start, end = gen_empty('start', 'end')
+    
+    apply_type = gen_vpython(
+            id = "appply.type",
+            fun_obj = pro_data,
+            op_kw = { "task_name": "apply_type!!!" }
+            )
+    merge_df = gen_vpython(
+            id = "merge.df",
+            fun_obj = pro_merge,
+            op_kw = { "task_name": "merge_df!!!" }
+            )
+    de_dup = gen_vpython(
+            id = "de.dup",
+            fun_obj = pro_data3,
+            op_kw = { "task_name": "du_dup!!!" }
+            )
+    summary_df = gen_vpython(
+            id = "summary.df",
+            fun_obj = pro_data4,
+            op_kw = { "task_name": "summary_df!!!" }
+            )
 
-                url_params = dict(kwargs.get("url_params"))
-                date = kwargs.get("ds")
-
-                if len(url_params) >= 1:
-                        from mov.api.call import save2df
-                        df = save2df(load_dt=date, url_params=url_params)
-                        print(df)
-                else:
-                        print("params안에 값이 없음")
-                        sys.exit(1)
-
-
-        nation_k = PythonVirtualenvOperator(
-                task_id='nation.k',
-                system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
-                op_kwargs={
-                "url_params": {"repNationCd": "K"},
-                "ds": "{{ds_nodash}}"
-                },
-                python_callable=get_data_with_params,
-        )
-
-        nation_f = PythonVirtualenvOperator(
-                task_id='nation.f',
-                system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
-                op_kwargs={
-                "url_params": {"repNationCd": "F"},
-                "ds": "{{ds_nodash}}"
-                },
-                python_callable=get_data_with_params,
-        )
-
-        multi_y = PythonVirtualenvOperator(
-                task_id='multi.y',
-                system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
-                op_kwargs={
-                "url_params": {"multiMovieYn": "Y"},
-                "ds": "{{ds_nodash}}"
-                },
-                python_callable=get_data_with_params,
-        )
-        multi_n = PythonVirtualenvOperator(
-                task_id='multi.n',
-                system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
-                op_kwargs={
-                "url_params": {"multiMovieYn": "N"},
-                "ds": "{{ds_nodash}}"
-                },
-                python_callable=get_data_with_params,
-        )
-
-        rm_dir= BashOperator(
-                task_id ='rm.dir',
-                bash_command='rm -rf ~/tmp/test_parquet/load_dt={{ ds_nodash }}'
-                )
-
-        echo_task = BashOperator(
-                task_id='echo.task', 
-                bash_command="echo 'task'"
-                )
-
-        start= EmptyOperator(task_id ='start')
-        end = EmptyOperator(task_id ='end')
-        
-        throw_err = BashOperator(
-                task_id='throw.err',
-                bash_command="exit 1",
-                trigger_rule="all_done"
-                )
-
-        get_start = EmptyOperator(
-                task_id='get.start',
-                trigger_rule = "all_done"
-                )
-
-        get_end = EmptyOperator(task_id='get.end')
-
-        start >> branch_op 
-        start >> throw_err >> save_data 
-
-        branch_op >> [rm_dir, echo_task] >> get_start
-        branch_op >> get_start
-        get_start >> [get_data, multi_y, multi_n, nation_k, nation_f] >> get_end
-        get_end >> save_data >> end
+    start >> apply_type >> merge_df
+    merge_df >> de_dup >> summary_df >> end

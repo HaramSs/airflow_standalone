@@ -39,22 +39,12 @@ with DAG(
                 print( "*" * 33)
 
 
-        # def print_context(ds=None, **kwargs):
-        #         pprint(kwargs)
-        #         print(ds)
-
-        #         #개봉일 기준 그룹핑 누적 관객수 합
-        #         print("개봉일 기준 그룹핑 누적 관객수 합")
-        #         g = df.groupby('openDt')
-        #         sum_df = g.agg({'audiCnt' : 'sum'}).reset_index()
-        #         print(sum_df)
-
         def branch_fun(ds_nodash):
                 import os
                 home_dir = os.path.expanduser("~")
                 path = os.path.join(home_dir, f"tmp/test_parquet/load_dt={ds_nodash}")
                 if os.path.exists(path):
-                        return "rm_dir"
+                        return "rm.dir"
                 else:
                         return "get_start", "echo.task"
    
@@ -69,7 +59,6 @@ with DAG(
                 python_callable=get_data,
                 requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
                 system_site_packages=False,
-                #venv_cache_path="/home/haram/tmp2/air_venv/get_data"
                 )
 
         save_data= PythonVirtualenvOperator(
@@ -82,12 +71,12 @@ with DAG(
 
         def get_data_with_params(**kwargs):
 
-                url_params = dict(kwargs.get("url_params"))
+                params = dict(kwargs.get("url_params"))
                 date = kwargs.get("ds")
 
-                if len(url_params) >= 1:
-                        from mov.api.call import save2df
-                        df = save2df(load_dt=date, url_params=url_params)
+                if len(params) >= 1:
+                        from movie.api.call import save2df
+                        df = save2df(load_dt=date, url_param=params)
                         print(df)
                 else:
                         print("params안에 값이 없음")
@@ -97,7 +86,7 @@ with DAG(
         nation_k = PythonVirtualenvOperator(
                 task_id='nation.k',
                 system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
+                requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
                 op_kwargs={
                 "url_params": {"repNationCd": "K"},
                 "ds": "{{ds_nodash}}"
@@ -108,7 +97,7 @@ with DAG(
         nation_f = PythonVirtualenvOperator(
                 task_id='nation.f',
                 system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
+                requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
                 op_kwargs={
                 "url_params": {"repNationCd": "F"},
                 "ds": "{{ds_nodash}}"
@@ -119,7 +108,7 @@ with DAG(
         multi_y = PythonVirtualenvOperator(
                 task_id='multi.y',
                 system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
+                requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
                 op_kwargs={
                 "url_params": {"multiMovieYn": "Y"},
                 "ds": "{{ds_nodash}}"
@@ -129,7 +118,7 @@ with DAG(
         multi_n = PythonVirtualenvOperator(
                 task_id='multi.n',
                 system_site_packages=False,
-                requirements=["git+https://github.com/Jeonghoon2/movie.git@0.2/api"],
+                requirements=["git+https://github.com/HaramSs/movie.git@0.3/api"],
                 op_kwargs={
                 "url_params": {"multiMovieYn": "N"},
                 "ds": "{{ds_nodash}}"
